@@ -54,6 +54,10 @@ const CharacterSchema = new mongoose.Schema({
         type: [Schema.Types.ObjectId],
         ref: 'Weapon',
     },
+    initiative: {
+        type: Number,
+        default: 0,
+    },
     toolsProficiencies: {
         type: [Schema.Types.ObjectId],
         ref: 'Tool',
@@ -109,7 +113,7 @@ const CharacterSchema = new mongoose.Schema({
     }
 })
 
-const updateCharacter = async (characterId: any, newCharacter: any) => {
+CharacterSchema.statics.updateCharacter = async (characterId: any, newCharacter: any) => {
     const character = await this.findById(characterId);
     if (!character) {
         throw new Error('Character not found');
@@ -122,7 +126,7 @@ const updateCharacter = async (characterId: any, newCharacter: any) => {
     await character.save();
 }
 
-const deleteCharacter = async (characterId: any) => {
+CharacterSchema.statics.deleteCharacter = async (characterId: any) => {
     const character = await this.findById(characterId);
     if (!character) {
         throw new Error('Character not found');
