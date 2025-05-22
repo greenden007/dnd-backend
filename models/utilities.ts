@@ -84,4 +84,26 @@ const setCurrency = (currency: any, newCurrency: any) => {
     }
 }
 
-module.exports = {statBlock, currency, setCurrency, updateStatBlock, updateCurrency, setStatBlock};
+const addStatBlock = (statBlock: any, addedStats: any) => {
+    for (const stat in addedStats) {
+        if (statBlock.hasOwnProperty(stat)) {
+            statBlock[stat] += addedStats[stat];
+        } else {
+            throw new Error(`Stat ${stat} does not exist in stat block`);
+        }
+    }
+}
+
+const addStatBlockNewBlock = (statBlock: any, addedStats: any) => {
+    const newStatBlock = { ...statBlock };
+    for (const stat in addedStats) {
+        if (newStatBlock.hasOwnProperty(stat)) {
+            newStatBlock[stat] += addedStats[stat];
+        } else {
+            throw new Error(`Stat ${stat} does not exist in stat block`);
+        }
+    }
+    return newStatBlock;
+}
+
+module.exports = {statBlock, currency, setCurrency, updateStatBlock, updateCurrency, setStatBlock, addStatBlock, addStatBlockNewBlock};

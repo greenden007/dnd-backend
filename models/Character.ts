@@ -1,5 +1,4 @@
 const Schema = require('mongoose').Schema;
-require('models/utilities')
 
 const CharacterSchema = new mongoose.Schema({
     owner: {
@@ -35,8 +34,8 @@ const CharacterSchema = new mongoose.Schema({
         type: [String]
     },
     baseStats: { // Base stats are the raw stats before any modifiers
-        type: statBlock,
-        default: statBlock,
+        type: utils.statBlock,
+        default: utils.statBlock,
     },
     skillProficiencies: {
         type: [String]
@@ -57,7 +56,7 @@ const CharacterSchema = new mongoose.Schema({
     },
     toolsProficiencies: {
         type: [Schema.Types.ObjectId],
-        ref: 'Item',
+        ref: 'Tool',
     },
     maxHitPoints: {
         type: Number,
@@ -77,11 +76,11 @@ const CharacterSchema = new mongoose.Schema({
     },
     activeShield: {
         type: Schema.Types.ObjectId,
-        ref: 'Shield',
+        ref: 'Armor',
     },
     equipment: {
         type: [Schema.Types.ObjectId],
-        ref: 'Item',
+        ref: 'Tool',
     },
     currency: {
         type: currency,

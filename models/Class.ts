@@ -1,4 +1,4 @@
-const ClassSchema = mongoose.Schema({
+const ClassSchema = new mongoose.Schema({
     lvlUnlocks: {
         type: Map,
         of: {
@@ -31,6 +31,12 @@ const ClassSchema = mongoose.Schema({
     baseEquipment: {
         type: [[mongoose.Schema.Types.ObjectId]],
         ref: 'Item',
+    },
+    multiclassing: {
+        statRequirements: {
+            type: [[String]], // [["str", "dex"]] for either or, ["str", "dex", "con"] for each >= 13
+            required: true,
+        }
     }
 });
 

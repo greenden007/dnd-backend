@@ -1,4 +1,4 @@
-const Campaign = mongoose.Schema({
+const CampaignSchema = new mongoose.Schema({
     name: {
         type: String,
         required: true,
@@ -18,7 +18,7 @@ const Campaign = mongoose.Schema({
     },
 })
 
-Campaign.statics.addCharacter = async function (campaignId: any, characterId: any) {
+CampaignSchema.statics.addCharacter = async function (campaignId: any, characterId: any) {
     const campaign = await this.findById(campaignId);
     if (!campaign) {
         throw new Error('Campaign not found');
@@ -27,7 +27,7 @@ Campaign.statics.addCharacter = async function (campaignId: any, characterId: an
     await campaign.save();
 }
 
-Campaign.statics.removeCharacter = async function (campaignId: any, characterId: any) {
+CampaignSchema.statics.removeCharacter = async function (campaignId: any, characterId: any) {
     const campaign = await this.findById(campaignId);
     if (!campaign) {
         throw new Error('Campaign not found');
@@ -36,7 +36,7 @@ Campaign.statics.removeCharacter = async function (campaignId: any, characterId:
     await campaign.save();
 }
 
-Campaign.statics.updateDescription = async function (campaignId: any, newDescription: any) {
+CampaignSchema.statics.updateDescription = async function (campaignId: any, newDescription: any) {
     const campaign = await this.findById(campaignId);
     if (!campaign) {
         throw new Error('Campaign not found');
@@ -45,7 +45,7 @@ Campaign.statics.updateDescription = async function (campaignId: any, newDescrip
     await campaign.save();
 }
 
-Campaign.statics.updateName = async function (campaignId: any, newName: any) {
+CampaignSchema.statics.updateName = async function (campaignId: any, newName: any) {
     const campaign = await this.findById(campaignId);
     if (!campaign) {
         throw new Error('Campaign not found');
@@ -54,7 +54,7 @@ Campaign.statics.updateName = async function (campaignId: any, newName: any) {
     await campaign.save();
 }
 
-Campaign.statics.deleteCampaign = async function (campaignId: any) {
+CampaignSchema.statics.deleteCampaign = async function (campaignId: any) {
     const campaign = await this.findById(campaignId);
     if (!campaign) {
         throw new Error('Campaign not found');
@@ -62,5 +62,5 @@ Campaign.statics.deleteCampaign = async function (campaignId: any) {
     await campaign.remove();
 }
 
-const CampaignModel = mongoose.model('Campaign', Campaign);
+const CampaignModel = mongoose.model('Campaign', CampaignSchema);
 module.exports = CampaignModel;
