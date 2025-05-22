@@ -1,7 +1,7 @@
 const Schema = require('mongoose').Schema;
 require('models/utilities')
 
-const CharacterSchema = {
+const CharacterSchema = new mongoose.Schema({
     owner: {
         type: Schema.Types.ObjectId,
         ref: 'User',
@@ -48,13 +48,16 @@ const CharacterSchema = {
         type: [String]
     },
     armorProficiencies: {
-        type: [String]
+        type: [Schema.Types.ObjectId],
+        ref: 'Armor',
     },
     weaponProficiencies: {
-        type: [String]
+        type: [Schema.Types.ObjectId],
+        ref: 'Weapon',
     },
     toolsProficiencies: {
-        type: [String]
+        type: [Schema.Types.ObjectId],
+        ref: 'Item',
     },
     maxHitPoints: {
         type: Number,
@@ -105,6 +108,28 @@ const CharacterSchema = {
         default: '',
         maxLength: 511,
     }
+})
+
+const updateCharacter = async (characterId: any, newCharacter: any) => {
+    const character = await this.findById(characterId);
+    if (!character) {
+        throw new Error('Character not found');
+    }
+    for (const key in newCharacter) {
+        if (key !== '_id' && key !== '__v') {
+            character[key] = newCharacter[key];
+        }
+    }
+    await character.save();
+}
+
+const deleteCharacter = async (characterId: any) => {
+    const character = await this.findById(characterId);
+    if (!character) {
+        throw new Error('Character not found');
+    }
+
+    await character.remove();
 }
 
 const Character = mongoose.model('Character', CharacterSchema);
