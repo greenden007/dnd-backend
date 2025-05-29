@@ -1,4 +1,5 @@
-const Schema = require('mongoose').Schema;
+import mongoose, { Schema } from 'mongoose';
+import * as utils from './utilities';
 
 const CharacterSchema = new mongoose.Schema({
     owner: {
@@ -13,6 +14,10 @@ const CharacterSchema = new mongoose.Schema({
     classes: {
         type: [Schema.Types.ObjectId],
         ref: 'Class',
+    },
+    subclasses: {
+        type: [Schema.Types.ObjectId],
+        ref: 'SubClass',
     },
     levels: {
         type: [Number]
@@ -87,8 +92,8 @@ const CharacterSchema = new mongoose.Schema({
         ref: 'Tool',
     },
     currency: {
-        type: currency,
-        default: currency,
+        type: utils.currency,
+        default: utils.currency,
     },
     features: {
         type: [Schema.Types.ObjectId],
@@ -113,7 +118,13 @@ const CharacterSchema = new mongoose.Schema({
     }
 })
 
-CharacterSchema.statics.updateCharacter = async (characterId: any, newCharacter: any) => {
+CharacterSchema.statics.create = async function(characterData: any) {
+    const character = new this(characterData);
+    await character.save();
+    return character;
+}
+
+CharacterSchema.statics.updateCharacter = async function(characterId: any, newCharacter: any) {
     const character = await this.findById(characterId);
     if (!character) {
         throw new Error('Character not found');
@@ -124,16 +135,18 @@ CharacterSchema.statics.updateCharacter = async (characterId: any, newCharacter:
         }
     }
     await character.save();
+    return character;
 }
 
-CharacterSchema.statics.deleteCharacter = async (characterId: any) => {
+CharacterSchema.statics.deleteCharacter = async function(characterId: any) {
     const character = await this.findById(characterId);
     if (!character) {
         throw new Error('Character not found');
     }
 
-    await character.remove();
+    await character.deleteOne();
+    return { message: 'Character successfully deleted' };
 }
 
-const Character = mongoose.model('Character', CharacterSchema);
-module.exports = Character;
+const CharacterModel = mongoose.model('Character', CharacterSchema);
+export default CharacterModel;

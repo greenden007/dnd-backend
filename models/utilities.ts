@@ -106,4 +106,13 @@ const addStatBlockNewBlock = (statBlock: any, addedStats: any) => {
     return newStatBlock;
 }
 
-module.exports = {statBlock, currency, setCurrency, updateStatBlock, updateCurrency, setStatBlock, addStatBlock, addStatBlockNewBlock};
+export {
+    statBlock,
+    currency,
+    setCurrency,
+    updateStatBlock,
+    updateCurrency,
+    setStatBlock,
+    addStatBlock,
+    addStatBlockNewBlock
+};

@@ -1,7 +1,13 @@
-const ItemSchema = new mongoose.Schema({
+import mongoose, { Schema } from 'mongoose';
+
+const ItemSchema = new Schema({
     name: {
         type: String,
         required: true,
+    },
+    creator: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
     },
     description: {
         type: String,
@@ -92,7 +98,7 @@ const ToolSchema = new Schema({
 });
 
 // General item update methods
-ItemSchema.statics.updateItem = async function(itemId: any, updateData: any) {
+ItemSchema.statics.updateItem = async function(itemId: mongoose.Types.ObjectId | string, updateData: any) {
     const item = await this.findById(itemId);
     if (!item) {
         throw new Error('Item not found');
@@ -109,8 +115,38 @@ ItemSchema.statics.updateItem = async function(itemId: any, updateData: any) {
     return item;
 };
 
+// Create item method
+ItemSchema.statics.create = async function(itemData: any) {
+    // Validate that the item data contains a valid type
+    if (!itemData.i_type) {
+        throw new Error('Item type is required');
+    }
+
+    let item;
+
+    // Create the item using the appropriate model based on the type
+    switch (itemData.i_type) {
+        case 'weapon':
+            item = await WeaponModel.create(itemData);
+            break;
+        case 'armor':
+            item = await ArmorModel.create(itemData);
+            break;
+        case 'tool':
+            item = await ToolModel.create(itemData);
+            break;
+        case 'other':
+            item = await ItemModel.create(itemData);
+            break;
+        default:
+            throw new Error('Invalid item type');
+    }
+
+    return item;
+}
+
 // Specific update methods for different properties
-ItemSchema.statics.updateName = async function(itemId: any, newName: any) {
+ItemSchema.statics.updateName = async function(itemId: mongoose.Types.ObjectId | string, newName: string) {
     const item = await this.findById(itemId);
     if (!item) {
         throw new Error('Item not found');
@@ -120,7 +156,7 @@ ItemSchema.statics.updateName = async function(itemId: any, newName: any) {
     return item;
 };
 
-ItemSchema.statics.updateDescription = async function(itemId: any, newDescription: any) {
+ItemSchema.statics.updateDescription = async function(itemId: mongoose.Types.ObjectId | string, newDescription: string) {
     const item = await this.findById(itemId);
     if (!item) {
         throw new Error('Item not found');
@@ -130,7 +166,7 @@ ItemSchema.statics.updateDescription = async function(itemId: any, newDescriptio
     return item;
 };
 
-ItemSchema.statics.updateWeight = async function(itemId: any, newWeight: any) {
+ItemSchema.statics.updateWeight = async function(itemId: mongoose.Types.ObjectId | string, newWeight: number) {
     const item = await this.findById(itemId);
     if (!item) {
         throw new Error('Item not found');
@@ -140,7 +176,7 @@ ItemSchema.statics.updateWeight = async function(itemId: any, newWeight: any) {
     return item;
 };
 
-ItemSchema.statics.updateValue = async function(itemId: any, newValue: any) {
+ItemSchema.statics.updateValue = async function(itemId: mongoose.Types.ObjectId | string, newValue: number) {
     const item = await this.findById(itemId);
     if (!item) {
         throw new Error('Item not found');
@@ -150,7 +186,7 @@ ItemSchema.statics.updateValue = async function(itemId: any, newValue: any) {
     return item;
 };
 
-ItemSchema.statics.updateRarity = async function(itemId: any, newRarity: any) {
+ItemSchema.statics.updateRarity = async function(itemId: mongoose.Types.ObjectId | string, newRarity: string) {
     const item = await this.findById(itemId);
     if (!item) {
         throw new Error('Item not found');
@@ -161,9 +197,9 @@ ItemSchema.statics.updateRarity = async function(itemId: any, newRarity: any) {
 };
 
 // Weapon-specific update methods
-ItemSchema.statics.updateWeaponProperties = async function(weaponId: any, updateData: any) {
-    const weapon = await this.model('Weapon').findById(weaponId);
-    if (!weapon) {
+ItemSchema.statics.updateWeaponProperties = async function(weaponId: mongoose.Types.ObjectId | string, updateData: any) {
+    const weapon = await this.findById(weaponId);
+    if (!weapon || weapon.i_type !== 'weapon') {
         throw new Error('Weapon not found');
     }
 
@@ -181,9 +217,9 @@ ItemSchema.statics.updateWeaponProperties = async function(weaponId: any, update
 };
 
 // Armor-specific update methods
-ItemSchema.statics.updateArmorProperties = async function(armorId: any, updateData: any) {
-    const armor = await this.model('Armor').findById(armorId);
-    if (!armor) {
+ItemSchema.statics.updateArmorProperties = async function(armorId: mongoose.Types.ObjectId | string, updateData: any) {
+    const armor = await this.findById(armorId);
+    if (!armor || armor.i_type !== 'armor') {
         throw new Error('Armor not found');
     }
 
@@ -196,9 +232,9 @@ ItemSchema.statics.updateArmorProperties = async function(armorId: any, updateDa
 };
 
 // Tool-specific update methods
-ItemSchema.statics.updateToolProperties = async function(toolId: any, updateData: any) {
-    const tool = await this.model('Tool').findById(toolId);
-    if (!tool) {
+ItemSchema.statics.updateToolProperties = async function(toolId: mongoose.Types.ObjectId | string, updateData: any) {
+    const tool = await this.findById(toolId);
+    if (!tool || tool.i_type !== 'tool') {
         throw new Error('Tool not found');
     }
 
@@ -210,7 +246,7 @@ ItemSchema.statics.updateToolProperties = async function(toolId: any, updateData
 };
 
 // Delete method
-ItemSchema.statics.deleteItem = async function(itemId: any) {
+ItemSchema.statics.deleteItem = async function(itemId: mongoose.Types.ObjectId | string) {
     const item = await this.findById(itemId);
     if (!item) {
         throw new Error('Item not found');
@@ -220,9 +256,10 @@ ItemSchema.statics.deleteItem = async function(itemId: any) {
     return { message: 'Item successfully deleted' };
 };
 
-const Item = mongoose.model('Item', ItemSchema);
+const ItemModel = mongoose.model('Item', ItemSchema);
 
-const Armor = Item.discriminator('Armor', ArmorSchema);
-const Tool = Item.discriminator('Tool', ToolSchema);
-const Weapon = Item.discriminator('Weapon', WeaponSchema);
+const ArmorModel = ItemModel.discriminator('Armor', ArmorSchema);
+const ToolModel = ItemModel.discriminator('Tool', ToolSchema);
+const WeaponModel = ItemModel.discriminator('Weapon', WeaponSchema);
 
+export { ItemModel, ArmorModel, ToolModel, WeaponModel };

@@ -1,4 +1,5 @@
-const bcrypt = require('bcrypt');
+import mongoose from 'mongoose';
+const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
     username: {
@@ -28,7 +29,7 @@ const userSchema = new mongoose.Schema({
     }]
 });
 
-userSchema.statics.updateUsername = async function (userId: any, newUsername: any) {
+userSchema.statics.updateUsername = async function(userId: any, newUsername: any) {
     const user = await this.findById(userId);
     if (!user) {
         throw new Error('User not found');
@@ -37,7 +38,7 @@ userSchema.statics.updateUsername = async function (userId: any, newUsername: an
     await user.save();
 }
 
-userSchema.statics.updatePassword = async (userId: any, newPassword: any) => {
+userSchema.statics.updatePassword = async function(userId: any, newPassword: any) {
     const user = await this.findById(userId);
     if (!user) {
         throw new Error('User not found');
@@ -47,7 +48,7 @@ userSchema.statics.updatePassword = async (userId: any, newPassword: any) => {
     await user.save();
 }
 
-userSchema.statics.updateEmail = async (userId: any, newEmail: any) => {
+userSchema.statics.updateEmail = async function(userId: any, newEmail: any) {
     const user = await this.findById(userId);
     if (!user) {
         throw new Error('User not found');
@@ -56,7 +57,7 @@ userSchema.statics.updateEmail = async (userId: any, newEmail: any) => {
     await user.save();
 }
 
-userSchema.statics.resetPassword = async (userId: any) => {
+userSchema.statics.resetPassword = async function(userId: any) {
     const user = await this.findById(userId);
     if (!user) {
         throw new Error('User not found');
@@ -65,12 +66,15 @@ userSchema.statics.resetPassword = async (userId: any) => {
     // TODO: send email with reset link
 }
 
-userSchema.statics.deleteUser = async (userId: any) => {
+userSchema.statics.deleteUser = async function(userId: any) {
     const user = await this.findById(userId);
     if (!user) {
         throw new Error('User not found');
     }
-    await user.remove();
+    await user.deleteOne();
 }
 
-module.exports = mongoose.model('User', userSchema);
+const UserModel = mongoose.model('User', userSchema);
+
+// Export for both CommonJS and ES modules
+export default UserModel;
