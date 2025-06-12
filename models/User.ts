@@ -19,6 +19,22 @@ const userSchema = new mongoose.Schema({
         type: Date,
         default: Date.now,
     },
+    activeSession: {
+        type: String,
+        default: null
+    },
+    lastLogin: {
+        type: Date,
+        default: null
+    },
+    isBetaTester: {
+        type: Boolean,
+        default: false
+    },
+    betaCodeUsed: {
+        type: String,
+        default: null
+    },
     characters: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Character',

@@ -111,7 +111,7 @@ const CharacterSchema = new mongoose.Schema({
         type: [Number],
         default: [0, 0, 0, 0, 0, 0, 0, 0, 0],
     },
-    characterAppearance: {
+    bio: {
         type: String,
         default: '',
         maxLength: 511,
