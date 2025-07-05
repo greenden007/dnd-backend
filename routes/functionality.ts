@@ -1,16 +1,19 @@
-import * as express from 'express';
-const router = express.Router();
-const auth = require('../middleware/auth');
-const Class = require('../models/Class');
-const Character = require('../models/Character');
-const Campaign = require('../models/Campaign');
-const Item = require('../models/Item');
-const Race = require('../models/Race');
-const Spell = require('../models/Spell');
-const Feature = require('../models/Features');
-const Subclass = require('../models/Subclass');
-import User from '../models/User';
-require('dotenv').config();
+import express, { Router, Request, Response, NextFunction } from 'express';
+import auth from '../middleware/auth';
+import Character from '../models/Character';
+import Campaign from '../models/Campaign';
+import Class from '../models/Class';
+import Feature from '../models/Features';
+import { ItemModel as Item } from '../models/Item';
+import Race from '../models/Race';
+import Spell from '../models/Spell';
+import Subclass from '../models/Subclass';
+import User, { User as UserType } from '../models/User';
+import { catchAsync } from '../utils/errorHandler';
+import { validateObjectId } from '../middleware/validateObjectId';
+import 'dotenv/config';
+
+const router = Router();
 
 // MongoDB ObjectId pattern for validation
 const objectIdPattern = /^[0-9a-fA-F]{24}$/;
@@ -19,28 +22,6 @@ const objectIdPattern = /^[0-9a-fA-F]{24}$/;
 function isValidObjectId(id: string): boolean {
   return objectIdPattern.test(id);
 }
-
-/**
- * Middleware to validate that a MongoDB ObjectId parameter exists and is valid
- * @param paramName The name of the parameter to validate (from req.query or req.body)
- * @param source Where to look for the parameter ('query' or 'body')
- */
-function validateObjectId(paramName: string, source: 'query' | 'body' = 'query') {
-  return (req: any, res: any, next: any) => {
-    const id = source === 'query' ? req.query[paramName] : req.body[paramName];
-    
-    if (!id) {
-      return res.status(400).json({ message: `${paramName} is required` });
-    }
-    
-    if (!isValidObjectId(id)) {
-      return res.status(400).json({ message: `Invalid ${paramName} format` });
-    }
-    
-    next();
-  };
-}
-
 /**
  * Middleware to check if the user is the creator/owner of a resource
  * @param modelName The mongoose model to use for finding the resource
@@ -48,31 +29,36 @@ function validateObjectId(paramName: string, source: 'query' | 'body' = 'query')
  * @param source Where to look for the parameter ('query' or 'body')
  * @param creatorField The field name that stores the creator/owner ID (default: 'creator')
  */
-function checkOwnership(modelName: string, paramName: string, source: 'query' | 'body' = 'query', creatorField: string = 'creator') {
-  return async (req: any, res: any, next: any) => {
-    try {
-      const id = source === 'query' ? req.query[paramName] : req.body[paramName];
-      const Model = getModelByName(modelName);
-      
-      const resource = await Model.findById(id);
-      if (!resource) {
-        return res.status(404).json({ message: `${modelName} not found` });
-      }
-      
-      // Check if the user is the creator/owner of the resource
-      if (resource[creatorField] && resource[creatorField].toString() !== req.user.id) {
-        return res.status(403).json({ 
-          message: `Forbidden: Only the ${creatorField === 'owner' ? 'owner' : 'creator'} can perform this action` 
-        });
-      }
-      
-      req.resource = resource;
-      next();
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: 'Server error' });
+function checkOwnership(modelName: string, paramName: string, source: 'query' | 'body' | 'params' = 'params', creatorField: string = 'creator') {
+  return catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Authentication error: User not found' });
     }
-  };
+    let id;
+    if (source === 'params') {
+      id = req.params[paramName];
+    } else if (source === 'query') {
+      id = req.query[paramName];
+    } else {
+      id = req.body[paramName];
+    }
+    const Model = getModelByName(modelName);
+    
+    const resource = await Model.findById(id);
+    if (!resource) {
+      return res.status(404).json({ message: `${modelName} not found` });
+    }
+    
+    // Check if the user is the creator/owner of the resource
+    if (resource[creatorField] && resource[creatorField].toString() !== req.user!.id) {
+      return res.status(403).json({ 
+        message: `Forbidden: Only the ${creatorField === 'owner' ? 'owner' : 'creator'} can perform this action` 
+      });
+    }
+    
+    (req as any).resource = resource;
+    next();
+  });
 }
 
 /**
@@ -93,545 +79,449 @@ function getModelByName(modelName: string): any {
   return models[modelName];
 }
 
-/**
- * Standard error handler for async routes
- * @param handler The async route handler function
- */
-function asyncHandler(handler: Function) {
-  return async (req: any, res: any, next: any) => {
-    try {
-      await handler(req, res, next);
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: 'Server error' });
-    }
-  };
-}
+// CREATE a new character
+router.post('/character', catchAsync(auth), catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const { name, race, classes, background } = req.body;
+    const character = new Character({
+        name,
+        race,
+        classes,
+        background,
+        creator: req.user!.id,
+    });
+    await character.save();
+    await User.findByIdAndUpdate(req.user!.id, { $addToSet: { characters: character._id } });
+    res.status(201).json(character);
+}));
 
-// Get all characters for the current user
-router.get('/characters', auth, asyncHandler(async (req: any, res: any) => {
-    const characters = await User.findById(req.user.id).populate('characters');
-    if (!characters) {
-        return res.status(404).json({ message: 'No characters found' });
-    }
+// GET all characters for the logged-in user
+router.get('/characters', catchAsync(auth), catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const characters = await Character.find({ creator: req.user!.id });
     res.status(200).json(characters);
 }));
 
-// Create a new character
-router.post('/create-character', auth, asyncHandler(async (req: any, res: any) => {
-    const { character } = req.body;
-    if (!character) {
-        return res.status(400).json({ message: 'Character data is required' });
-    }
-    character.owner = req.user.id; // Set the owner to the current user
-    const newCharacter = await Character.create(character);
-    await User.updateOne({ _id: req.user.id }, { $push: { characters: newCharacter._id } });
-    res.status(201).json(newCharacter);
+// GET a single character by ID
+router.get('/character/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Character', 'id', 'params', 'creator'), catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const character = (req as any).resource;
+    res.status(200).json(character);
 }));
 
-// Get character info by ID
-router.get('/character-info', auth, validateObjectId('characterId', 'query'), asyncHandler(async (req: any, res: any) => {
-    const { characterId } = req.query;
-    const character = await Character.findById(characterId);
-    
-    if (!character) {
-        return res.status(404).json({ message: 'Character not found' });
+// UPDATE a character by ID
+router.put('/character/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Character', 'id', 'params', 'creator'), catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const updatedCharacter = await Character.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updatedCharacter) {
+        res.status(404).json({ message: 'Character not found' });
+        return;
     }
-    
-    // Check if character has owner
-    if (!character.owner) {
-        return res.status(403).json({ message: 'Character has no owner' });
-    }
-    
-    // Only allow the owner and members of the campaign to view the character
-    const isOwner = character.owner.toString() === req.user.id;
-    let isCampaignMember = false;
-    
-    if (character.campaign) {
-        const campaign = await Campaign.findById(character.campaign);
-        if (campaign) {
-            isCampaignMember = campaign.players.includes(req.user.id) || campaign.owner.toString() === req.user.id;
-        }
-    }
-    
-    if (!isOwner && !isCampaignMember) {
-        return res.status(403).json({ message: 'Forbidden' });
-    }
-    
-    return res.status(200).json(character);
+    res.status(200).json(updatedCharacter);
 }));
 
-// Update character
-router.put('/update-character', auth, 
-    validateObjectId('characterId', 'body'),
-    checkOwnership('Character', 'characterId', 'body', 'owner'),
-    asyncHandler(async (req: any, res: any) => {
-        const { characterId, updatedCharacter } = req.body;
-        
-        if (!updatedCharacter) {
-            return res.status(400).json({ message: 'Updated character data is required' });
-        }
-        
-        await Character.updateCharacter(characterId, updatedCharacter);
-        res.status(200).json({ message: 'Character updated successfully' });
-    })
-);
+// DELETE a character by ID
+router.delete('/character/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Character', 'id', 'params', 'creator'), catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const character = (req as any).resource;
 
-// Delete character
-router.delete('/delete-character', auth, 
-    validateObjectId('characterId', 'body'),
-    checkOwnership('Character', 'characterId', 'body', 'owner'),
-    asyncHandler(async (req: any, res: any) => {
-        const { characterId } = req.body;
-        await Character.deleteCharacter(characterId);
-        res.status(200).json({ message: 'Character deleted successfully' });
-    })
-);
+    await Character.findByIdAndDelete(id);
+    await User.findByIdAndUpdate(character.creator, { $pull: { characters: id } });
 
-// Create a new feature
-router.post('/create-feature', auth, asyncHandler(async (req: any, res: any) => {
-    const { feature } = req.body;
-    if (!feature) {
-        return res.status(400).json({ message: 'Feature data is required' });
-    }
-    feature.creator = req.user.id; // Set the creator to the current user
-    const newFeature = await Feature.create(feature);
+    res.status(200).json({ message: 'Character deleted successfully' });
+}));
+
+//-----------------------------------------------------------------------------
+// Feature Routes
+//-----------------------------------------------------------------------------
+
+// CREATE a new feature
+router.post('/feature', catchAsync(auth), catchAsync(async (req: Request, res: Response) => {
+    const featureData = req.body;
+    featureData.creator = req.user!.id; // Set the creator to the current user
+    const newFeature = await Feature.create(featureData);
     res.status(201).json(newFeature);
 }));
 
-// Get feature info by ID
-router.get('/feature-info', auth, 
-    validateObjectId('featureId', 'query'),
-    asyncHandler(async (req: any, res: any) => {
-        const { featureId } = req.query;
-        const feature = await Feature.findById(featureId);
-        
-        if (!feature) {
-            return res.status(404).json({ message: 'Feature not found' });
-        }
-        
-        return res.status(200).json(feature);
-    })
-);
-
-// Update feature
-router.put('/feature-update', auth, 
-    validateObjectId('featureId', 'body'),
-    checkOwnership('Feature', 'featureId', 'body'),
-    asyncHandler(async (req: any, res: any) => {
-        const { featureId, updatedFeature } = req.body;
-        
-        if (!updatedFeature) {
-            return res.status(400).json({ message: 'Updated feature data is required' });
-        }
-        
-        await Feature.updateFeature(featureId, updatedFeature);
-        res.status(200).json({ message: 'Feature updated successfully' });
-    })
-);
-
-// Delete feature
-router.delete('/feature-delete', auth, 
-    validateObjectId('featureId', 'body'),
-    checkOwnership('Feature', 'featureId', 'body'),
-    asyncHandler(async (req: any, res: any) => {
-        const { featureId } = req.body;
-        await Feature.deleteFeaturesSchema(featureId);
-        res.status(200).json({ message: 'Feature deleted successfully' });
-    })
-);
-
-// Create a new class
-router.post('/create-class', auth, asyncHandler(async (req: any, res: any) => {
-    const { classData } = req.body;
-    if (!classData) {
-        return res.status(400).json({ message: 'Class data is required' });
+// GET a single feature by ID
+router.get('/feature/:id', catchAsync(auth), validateObjectId('id', 'params'), catchAsync(async (req: Request, res: Response) => {
+    const feature = await Feature.findById(req.params.id);
+    if (!feature) {
+        res.status(404).json({ message: 'Feature not found' });
+        return;
     }
-    classData.creator = req.user.id; // Set the creator to the current user
+    res.status(200).json(feature);
+}));
+
+// UPDATE a feature by ID
+router.put('/feature/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Feature', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const updatedFeature = await Feature.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updatedFeature) {
+        res.status(404).json({ message: 'Feature not found' });
+        return;
+    }
+    res.status(200).json(updatedFeature);
+}));
+
+// DELETE a feature by ID
+router.delete('/feature/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Feature', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const feature = await Feature.findByIdAndDelete(req.params.id);
+    if (!feature) {
+        res.status(404).json({ message: 'Feature not found' });
+        return;
+    }
+    res.status(200).json({ message: 'Feature deleted successfully' });
+}));
+
+//-----------------------------------------------------------------------------
+// Class Routes
+//-----------------------------------------------------------------------------
+
+// CREATE a new class
+router.post('/class', catchAsync(auth), catchAsync(async (req: Request, res: Response) => {
+    const classData = req.body;
+    classData.creator = req.user!.id;
     const newClass = await Class.create(classData);
     res.status(201).json(newClass);
 }));
 
-// Get class info by ID
-router.get('/class-info', auth, 
-    validateObjectId('classId', 'query'),
-    asyncHandler(async (req: any, res: any) => {
-        const { classId } = req.query;
-        const classInfo = await Class.findById(classId);
-        
-        if (!classInfo) {
-            return res.status(404).json({ message: 'Class not found' });
-        }
-        
-        return res.status(200).json(classInfo);
-    })
-);
-
-// Update class
-router.put('/class-update', auth, 
-    validateObjectId('classId', 'body'),
-    checkOwnership('Class', 'classId', 'body'),
-    asyncHandler(async (req: any, res: any) => {
-        const { classId, updatedClass } = req.body;
-        
-        if (!updatedClass) {
-            return res.status(400).json({ message: 'Updated class data is required' });
-        }
-        
-        await Class.updateClass(classId, updatedClass);
-        res.status(200).json({ message: 'Class updated successfully' });
-    })
-);
-
-// Delete class
-router.delete('/class-delete', auth, 
-    validateObjectId('classId', 'body'),
-    checkOwnership('Class', 'classId', 'body'),
-    asyncHandler(async (req: any, res: any) => {
-        const { classId } = req.body;
-        await Class.deleteClass(classId);
-        res.status(200).json({ message: 'Class deleted successfully' });
-    })
-);
-
-// Create a new spell
-router.post('/create-spell', auth, asyncHandler(async (req: any, res: any) => {
-    const { spell } = req.body;
-    if (!spell) {
-        return res.status(400).json({ message: 'Spell data is required' });
+// GET a single class by ID
+router.get('/class/:id', catchAsync(auth), validateObjectId('id', 'params'), catchAsync(async (req: Request, res: Response) => {
+    const classInfo = await Class.findById(req.params.id);
+    if (!classInfo) {
+        res.status(404).json({ message: 'Class not found' });
+        return;
     }
-    spell.creator = req.user.id; // Set the creator to the current user
-    const newSpell = await Spell.create(spell);
+    res.status(200).json(classInfo);
+}));
+
+// UPDATE a class by ID
+router.put('/class/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Class', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const updatedClass = await Class.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updatedClass) {
+        res.status(404).json({ message: 'Class not found' });
+        return;
+    }
+    res.status(200).json(updatedClass);
+}));
+
+// DELETE a class by ID
+router.delete('/class/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Class', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const deletedClass = await Class.findByIdAndDelete(req.params.id);
+    if (!deletedClass) {
+        res.status(404).json({ message: 'Class not found' });
+        return;
+    }
+    res.status(200).json({ message: 'Class deleted successfully' });
+}));
+
+//-----------------------------------------------------------------------------
+// Spell Routes
+//-----------------------------------------------------------------------------
+
+// CREATE a new spell
+router.post('/spell', catchAsync(auth), catchAsync(async (req: Request, res: Response) => {
+    const spellData = req.body;
+    spellData.creator = req.user!.id;
+    const newSpell = await Spell.create(spellData);
     res.status(201).json(newSpell);
 }));
 
-// Get spell info by ID
-router.get('/spell-info', auth, 
-    validateObjectId('spellId', 'query'),
-    asyncHandler(async (req: any, res: any) => {
-        const { spellId } = req.query;
-        const spellInfo = await Spell.findById(spellId);
-        
-        if (!spellInfo) {
-            return res.status(404).json({ message: 'Spell not found' });
-        }
-        
-        return res.status(200).json(spellInfo);
-    })
-);
-
-// Update spell
-router.put('/spell-update', auth, 
-    validateObjectId('spellId', 'body'),
-    checkOwnership('Spell', 'spellId', 'body'),
-    asyncHandler(async (req: any, res: any) => {
-        const { spellId, updatedSpell } = req.body;
-        
-        if (!updatedSpell) {
-            return res.status(400).json({ message: 'Updated spell data is required' });
-        }
-        
-        await Spell.updateSpell(spellId, updatedSpell);
-        res.status(200).json({ message: 'Spell updated successfully' });
-    })
-);
-
-// Delete spell
-router.delete('/spell-delete', auth, 
-    validateObjectId('spellId', 'body'),
-    checkOwnership('Spell', 'spellId', 'body'),
-    asyncHandler(async (req: any, res: any) => {
-        const { spellId } = req.body;
-        await Spell.deleteSpell(spellId);
-        res.status(200).json({ message: 'Spell deleted successfully' });
-    })
-);
-
-// Create a new campaign
-router.post('/create-campaign', auth, asyncHandler(async (req: any, res: any) => {
-    const { campaign } = req.body;
-    if (!campaign) {
-        return res.status(400).json({ message: 'Campaign data is required' });
+// GET a single spell by ID
+router.get('/spell/:id', catchAsync(auth), validateObjectId('id', 'params'), catchAsync(async (req: Request, res: Response) => {
+    const spellInfo = await Spell.findById(req.params.id);
+    if (!spellInfo) {
+        res.status(404).json({ message: 'Spell not found' });
+        return;
     }
-    campaign.owner = req.user.id; // Set the owner to the current user
-    const newCampaign = await Campaign.create(campaign);
-    await User.updateOne({ _id: req.user.id }, { $push: { campaigns: newCampaign._id } });
+    res.status(200).json(spellInfo);
+}));
+
+// UPDATE a spell by ID
+router.put('/spell/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Spell', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const updatedSpell = await Spell.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updatedSpell) {
+        res.status(404).json({ message: 'Spell not found' });
+        return;
+    }
+    res.status(200).json(updatedSpell);
+}));
+
+// DELETE a spell by ID
+router.delete('/spell/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Spell', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const deletedSpell = await Spell.findByIdAndDelete(req.params.id);
+    if (!deletedSpell) {
+        res.status(404).json({ message: 'Spell not found' });
+        return;
+    }
+    res.status(200).json({ message: 'Spell deleted successfully' });
+}));
+
+//-----------------------------------------------------------------------------
+// Campaign Routes
+//-----------------------------------------------------------------------------
+
+// CREATE a new campaign
+router.post('/campaign', catchAsync(auth), catchAsync(async (req: Request, res: Response) => {
+    const campaignData = req.body;
+    campaignData.owner = req.user!.id;
+    const newCampaign = await Campaign.create(campaignData);
+    await User.findByIdAndUpdate(req.user!.id, { $push: { campaigns: newCampaign._id } });
     res.status(201).json(newCampaign);
 }));
 
-// Get user's campaigns
-router.get('/my-campaigns', auth, asyncHandler(async (req: any, res: any) => {
-    const campaigns = await User.findById(req.user.id).populate('campaigns');
-    if (!campaigns) {
-        return res.status(404).json({ message: 'No campaigns found' });
+// GET user's campaigns
+router.get('/my-campaigns', catchAsync(auth), catchAsync(async (req: Request, res: Response) => {
+    const userWithCampaigns = await User.findById(req.user!.id).populate('campaigns');
+    if (!userWithCampaigns) {
+        res.status(404).json({ message: 'User not found' });
+        return;
     }
-    res.status(200).json(campaigns);
+    res.status(200).json(userWithCampaigns.campaigns);
 }));
 
-// Get campaign info by ID with access control
-router.get('/campaign-info', auth, validateObjectId('campaignId', 'query'), asyncHandler(async (req: any, res: any) => {
-    const { campaignId } = req.query;
-    const campaignInfo = await Campaign.findById(campaignId);
-    
-    if (!campaignInfo) {
-        return res.status(404).json({ message: 'Campaign not found' });
+// GET a campaign by ID
+router.get('/campaign/:id', catchAsync(auth), validateObjectId('id', 'params'), catchAsync(async (req: Request, res: Response) => {
+    const campaign = await Campaign.findById(req.params.id);
+    if (!campaign) {
+        res.status(404).json({ message: 'Campaign not found' });
+        return;
     }
-    
-    // Check if user is the owner or a player in the campaign
-    if (!campaignInfo.players.includes(req.user.id) && campaignInfo.owner.toString() !== req.user.id) {
-        return res.status(403).json({ message: 'Forbidden'});
+    // Ensure user is the owner or a player
+    const isPlayer = campaign.players.some(p => p.equals(req.user!.id));
+    if (!campaign.owner!.equals(req.user!.id) && !isPlayer) {
+        res.status(403).json({ message: 'Forbidden' });
+        return;
     }
-    
-    return res.status(200).json(campaignInfo);
+    res.status(200).json(campaign);
 }));
 
-// Delete campaign with owner check
-router.delete('/campaign-delete', auth, 
-    validateObjectId('campaignId', 'body'),
-    checkOwnership('Campaign', 'campaignId', 'body', 'owner'),
-    asyncHandler(async (req: any, res: any) => {
-        const { campaignId } = req.body;
-        const campaign = req.resource; // Already fetched by checkOwnership middleware
-        
-        // Update all characters to remove campaign reference
-        for (const characterId of campaign.characters) {
-            const character = await Character.findById(characterId);
-            if (character) {
-                const copyCharacter = JSON.parse(JSON.stringify(character));
-                copyCharacter.campaign = null;
-                await Character.updateCharacter(characterId, copyCharacter);
-            }
-        }
-        
-        await Campaign.deleteCampaign(campaignId);
-        res.status(200).json({ message: 'Campaign deleted successfully' });
-    })
-);
+// UPDATE a campaign by ID
+router.put('/campaign/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Campaign', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const updatedCampaign = await Campaign.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updatedCampaign) {
+        res.status(404).json({ message: 'Campaign not found' });
+        return;
+    }
+    res.status(200).json(updatedCampaign);
+}));
+
+// DELETE a campaign by ID
+router.delete('/campaign/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Campaign', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const campaign = req.resource; // Fetched by checkOwnership middleware
+
+    // Remove campaign reference from all characters within it
+    if (campaign.characters && campaign.characters.length > 0) {
+        await Character.updateMany({ _id: { $in: campaign.characters } }, { $set: { campaign: null } });
+    }
+
+    // Remove campaign reference from all users (owner and players)
+    await User.updateMany({ campaigns: campaign._id }, { $pull: { campaigns: campaign._id } });
+
+    await Campaign.findByIdAndDelete(req.params.id);
+
+    res.status(200).json({ message: 'Campaign deleted successfully' });
+}));
 
 // Create a new item
-router.post('/create-item', auth, asyncHandler(async (req: any, res: any) => {
-    const { item } = req.body;
-    if (!item) {
-        return res.status(400).json({ message: 'Item data is required' });
-    }
-    item.creator = req.user.id; // Set the creator to the current user
-    const newItem = await Item.create(item);
+router.post('/item', catchAsync(auth), catchAsync(async (req: Request, res: Response) => {
+    const itemData = req.body;
+    itemData.owner = req.user!.id;
+    const newItem = await Item.create(itemData);
     res.status(201).json(newItem);
 }));
 
-// Get item info by ID
-router.get('/item-info', auth, 
-    validateObjectId('itemId', 'query'),
-    asyncHandler(async (req: any, res: any) => {
-        const { itemId } = req.query;
-        const itemInfo = await Item.findById(itemId);
-        
-        if (!itemInfo) {
-            return res.status(404).json({ message: 'Item not found' });
-        }
-        
-        return res.status(200).json(itemInfo);
-    })
-);
-
-// Update item
-router.put('/item-update', auth, 
-    validateObjectId('itemId', 'body'),
-    checkOwnership('Item', 'itemId', 'body'),
-    asyncHandler(async (req: any, res: any) => {
-        const { itemId, updatedItem } = req.body;
-        
-        if (!updatedItem) {
-            return res.status(400).json({ message: 'Updated item data is required' });
-        }
-        
-        await Item.updateItem(itemId, updatedItem);
-        res.status(200).json({ message: 'Item updated successfully' });
-    })
-);
-
-// Delete item
-router.delete('/item-delete', auth, 
-    validateObjectId('itemId', 'body'),
-    checkOwnership('Item', 'itemId', 'body'),
-    asyncHandler(async (req: any, res: any) => {
-        const { itemId } = req.body;
-        await Item.deleteItem(itemId);
-        res.status(200).json({ message: 'Item deleted successfully' });
-    })
-);
-
-// Create a new race
-router.post('/create-race', auth, asyncHandler(async (req: any, res: any) => {
-    const { race } = req.body;
-    if (!race) {
-        return res.status(400).json({ message: 'Race details not complete' });
+// GET an item by ID
+router.get('/item/:id', catchAsync(auth), validateObjectId('id', 'params'), catchAsync(async (req: Request, res: Response) => {
+    const item = await Item.findById(req.params.id);
+    if (!item) {
+        res.status(404).json({ message: 'Item not found' });
+        return;
     }
-    race.creator = req.user.id;
-    const newRace = await Race.create(race);
+    res.status(200).json(item);
+}));
+
+// UPDATE an item by ID
+router.put('/item/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Item', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const updatedItem = await Item.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updatedItem) {
+        res.status(404).json({ message: 'Item not found' });
+        return;
+    }
+    res.status(200).json(updatedItem);
+}));
+
+// DELETE an item by ID
+router.delete('/item/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Item', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const deletedItem = await Item.findByIdAndDelete(req.params.id);
+    if (!deletedItem) {
+        res.status(404).json({ message: 'Item not found' });
+        return;
+    }
+    res.status(200).json({ message: 'Item deleted successfully' });
+}));
+
+//-----------------------------------------------------------------------------
+// Race Routes
+//-----------------------------------------------------------------------------
+
+// CREATE a new race
+router.post('/race', catchAsync(auth), catchAsync(async (req: Request, res: Response) => {
+    const raceData = req.body;
+    raceData.owner = req.user!.id;
+    const newRace = await Race.create(raceData);
+    await User.findByIdAndUpdate(req.user!.id, { $push: { races: newRace._id } });
     res.status(201).json(newRace);
 }));
 
-// Get race info by ID
-router.get('/race-info', auth, 
-    validateObjectId('raceId', 'query'),
-    asyncHandler(async (req: any, res: any) => {
-        const { raceId } = req.query;
-        const raceInfo = await Race.findById(raceId);
-        
-        if (!raceInfo) {
-            return res.status(404).json({ message: 'Race not found' });
-        }
-        
-        return res.status(200).json(raceInfo);
-    })
-);
-
-// Update race
-router.put('/race-update', auth, 
-    validateObjectId('raceId', 'body'),
-    checkOwnership('Race', 'raceId', 'body'),
-    asyncHandler(async (req: any, res: any) => {
-        const { raceId, updatedRace } = req.body;
-        
-        if (!updatedRace) {
-            return res.status(400).json({ message: 'Updated race data is required' });
-        }
-        
-        await Race.updateRace(raceId, updatedRace);
-        return res.status(200).json({ message: 'Race updated successfully' });
-    })
-);
-
-// Delete race
-router.delete('/race-delete', auth, 
-    validateObjectId('raceId', 'body'),
-    checkOwnership('Race', 'raceId', 'body'),
-    asyncHandler(async (req: any, res: any) => {
-        const { raceId } = req.body;
-        await Race.deleteRace(raceId);
-        return res.status(200).json({ message: 'Race deleted successfully' });
-    })
-);
-
-// Middleware to validate character and campaign IDs
-function validateCharacterAndCampaign(req: any, res: any, next: any) {
-    const { characterId, campaignId } = req.body;
-    
-    if (!characterId || !campaignId) {
-        return res.status(400).json({ message: 'Character ID and Campaign ID are required' });
+// GET a race by ID
+router.get('/race/:id', catchAsync(auth), validateObjectId('id', 'params'), catchAsync(async (req: Request, res: Response) => {
+    const race = await Race.findById(req.params.id);
+    if (!race) {
+        res.status(404).json({ message: 'Race not found' });
+        return;
     }
-    
-    if (!isValidObjectId(characterId)) {
-        return res.status(400).json({ message: 'Invalid character ID format' });
-    }
-    
-    if (!isValidObjectId(campaignId)) {
-        return res.status(400).json({ message: 'Invalid campaign ID format' });
-    }
-    
-    next();
-}
+    res.status(200).json(race);
+}));
 
-// Add character to campaign
-router.put('/add-character-to-campaign', auth, 
-    validateCharacterAndCampaign,
-    asyncHandler(async (req: any, res: any) => {
-        const { characterId, campaignId } = req.body;
-        
+// UPDATE a race by ID
+router.put('/race/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Race', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const updatedRace = await Race.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updatedRace) {
+        res.status(404).json({ message: 'Race not found' });
+        return;
+    }
+    res.status(200).json(updatedRace);
+}));
+
+// DELETE a race by ID
+router.delete('/race/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Race', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const deletedRace = await Race.findByIdAndDelete(req.params.id);
+    if (!deletedRace) {
+        res.status(404).json({ message: 'Race not found' });
+        return;
+    }
+    // Also remove the race from any user who might have it
+    await User.updateMany({ races: req.params.id }, { $pull: { races: req.params.id } });
+    res.status(200).json({ message: 'Race deleted successfully' });
+}));
+
+// ADD a character to a campaign
+router.post('/campaign/:id/characters', catchAsync(auth), 
+    validateObjectId('id', 'params'), 
+    validateObjectId('characterId', 'body'), 
+    checkOwnership('Campaign', 'id'), 
+    catchAsync(async (req: Request, res: Response) => {
+        const { id: campaignId } = req.params;
+        const { characterId } = req.body;
+
         const character = await Character.findById(characterId);
-        const campaign = await Campaign.findById(campaignId);
-
-        if (!character) {
-            return res.status(404).json({ message: 'Character not found' });
-        }
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
+        if (!character || !character.owner) {
+            res.status(404).json({ message: 'Character or character owner not found' });
+            return;
         }
 
-        await Campaign.addCharacter(campaignId, characterId);
-        await Character.updateCharacter(characterId, { campaign: campaignId });
-        await Campaign.addPlayer(campaignId, character.owner);
-        await User.updateOne({ _id: character.owner }, { $push: { campaigns: campaignId } });
+        // Use $addToSet to avoid duplicates
+        await Campaign.findByIdAndUpdate(campaignId, { 
+            $addToSet: { characters: characterId, players: character.owner }
+        });
+        await Character.findByIdAndUpdate(characterId, { campaign: campaignId });
+        await User.findByIdAndUpdate(character.owner, { $addToSet: { campaigns: campaignId } });
+
         res.status(200).json({ message: 'Character added to campaign successfully' });
     })
 );
 
-// Remove character from campaign
-router.put('/remove-character-from-campaign', auth, 
-    validateCharacterAndCampaign,
-    asyncHandler(async (req: any, res: any) => {
-        const { characterId, campaignId } = req.body;
-        
+// REMOVE a character from a campaign
+router.delete('/campaign/:id/characters/:characterId', catchAsync(auth), 
+    validateObjectId('id', 'params'), 
+    validateObjectId('characterId', 'params'), 
+    checkOwnership('Campaign', 'id'), 
+    catchAsync(async (req: Request, res: Response) => {
+        const { id: campaignId, characterId } = req.params;
+
         const character = await Character.findById(characterId);
-        const campaign = await Campaign.findById(campaignId);
-        
-        if (!character) {
-            return res.status(404).json({ message: 'Character not found' });
-        }
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
+        if (!character || !character.owner) {
+            res.status(404).json({ message: 'Character or character owner not found' });
+            return;
         }
 
-        await Campaign.removeCharacter(campaignId, characterId);
-        await Character.updateCharacter(characterId, { campaign: null });
-        await Campaign.removePlayer(campaignId, character.owner);
-        await User.updateOne({ _id: character.owner }, { $pull: { campaigns: campaignId } });
+        // Pull character from campaign's character list
+        await Campaign.findByIdAndUpdate(campaignId, { $pull: { characters: characterId } });
+
+        // Unset campaign on the character
+        await Character.findByIdAndUpdate(characterId, { $set: { campaign: null } });
+
+        // Check if the owner has any other characters in this campaign
+        const otherCharsCount = await Character.countDocuments({ owner: character.owner, campaign: campaignId });
+
+        // If they have no other characters in this campaign, remove them as a player
+        if (otherCharsCount === 0) {
+            await Campaign.findByIdAndUpdate(campaignId, { $pull: { players: character.owner } });
+            // Also remove the campaign from the user's list
+            await User.findByIdAndUpdate(character.owner, { $pull: { campaigns: campaignId } });
+        }
+
         res.status(200).json({ message: 'Character removed from campaign successfully' });
     })
 );
 
-// Create a new subclass
-router.post('/create-subclass', auth, asyncHandler(async (req: any, res: any) => {
-    const { subclass } = req.body;
-    if (!subclass) {
-        return res.status(400).json({ message: 'Subclass data is required' });
+//-----------------------------------------------------------------------------
+// Subclass Routes
+//-----------------------------------------------------------------------------
+
+// CREATE a new subclass
+router.post('/subclass', catchAsync(auth), catchAsync(async (req: Request, res: Response) => {
+    const subclassData = req.body;
+    subclassData.owner = req.user!.id;
+    const newSubclass = await Subclass.create(subclassData);
+
+    // Add subclass to the user's list of subclasses
+    await User.findByIdAndUpdate(req.user!.id, { $push: { subclasses: newSubclass._id } });
+
+    // Add subclass to the corresponding class's list of subclasses
+    if (newSubclass.classId) {
+        await Class.findByIdAndUpdate(newSubclass.classId, { $push: { subclasses: newSubclass._id } });
     }
-    subclass.creator = req.user.id; // Set the creator to the current user
-    const newSubclass = await Subclass.create(subclass);
+
     res.status(201).json(newSubclass);
 }));
 
-// Get subclass info by ID
-router.get('/subclass-info', auth, 
-    validateObjectId('subclassId', 'query'),
-    asyncHandler(async (req: any, res: any) => {
-        const { subclassId } = req.query;
-        const subclassInfo = await Subclass.findById(subclassId);
-        
-        if (!subclassInfo) {
-            return res.status(404).json({ message: 'Subclass not found' });
-        }
-        
-        return res.status(200).json(subclassInfo);
-    })
-);
+// GET a subclass by ID
+router.get('/subclass/:id', catchAsync(auth), validateObjectId('id', 'params'), catchAsync(async (req: Request, res: Response) => {
+    const subclass = await Subclass.findById(req.params.id);
+    if (!subclass) {
+        res.status(404).json({ message: 'Subclass not found' });
+        return;
+    }
+    res.status(200).json(subclass);
+}));
 
-// Update subclass
-router.put('/subclass-update', auth, 
-    validateObjectId('subclassId', 'body'),
-    checkOwnership('Subclass', 'subclassId', 'body'),
-    asyncHandler(async (req: any, res: any) => {
-        const { subclassId, updatedSubclass } = req.body;
-        
-        if (!updatedSubclass) {
-            return res.status(400).json({ message: 'Updated subclass data is required' });
-        }
-        
-        await Subclass.updateSubclass(subclassId, updatedSubclass);
-        res.status(200).json({ message: 'Subclass updated successfully' });
-    })
-);
+// UPDATE a subclass by ID
+router.put('/subclass/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Subclass', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const updatedSubclass = await Subclass.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updatedSubclass) {
+        res.status(404).json({ message: 'Subclass not found' });
+        return;
+    }
+    res.status(200).json(updatedSubclass);
+}));
 
-// Delete subclass
-router.delete('/subclass-delete', auth, 
-    validateObjectId('subclassId', 'body'),
-    checkOwnership('Subclass', 'subclassId', 'body'),
-    asyncHandler(async (req: any, res: any) => {
-        const { subclassId } = req.body;
-        await Subclass.deleteSubclass(subclassId);
-        res.status(200).json({ message: 'Subclass deleted successfully' });
-    })
-);
+// DELETE a subclass by ID
+router.delete('/subclass/:id', catchAsync(auth), validateObjectId('id', 'params'), checkOwnership('Subclass', 'id'), catchAsync(async (req: Request, res: Response) => {
+    const subclassId = req.params.id;
+    const deletedSubclass = await Subclass.findByIdAndDelete(subclassId);
 
-module.exports = router;
+    if (!deletedSubclass) {
+        res.status(404).json({ message: 'Subclass not found' });
+        return;
+    }
+
+    // Remove the subclass from the corresponding class's list of subclasses
+    if (deletedSubclass.classId) {
+        await Class.findByIdAndUpdate(deletedSubclass.classId, { $pull: { subclasses: subclassId } });
+    }
+
+    // Remove the subclass from the user's list of subclasses
+    await User.findByIdAndUpdate(deletedSubclass.owner, { $pull: { subclasses: subclassId } });
+
+    res.status(200).json({ message: 'Subclass deleted successfully' });
+}));
+
+export default router;

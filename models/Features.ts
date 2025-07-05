@@ -31,7 +31,7 @@ const FeaturesSchema = new mongoose.Schema({
         type: [String],
         default: []
     },
-    creator: {
+    owner: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
     }

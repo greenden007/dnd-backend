@@ -36,7 +36,7 @@ const RaceSchema = new mongoose.Schema({
         type: [Schema.Types.ObjectId], // Use null for a free feature
         ref: 'Feature',
     },
-    creator: {
+    owner: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
     }

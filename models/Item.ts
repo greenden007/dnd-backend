@@ -5,7 +5,7 @@ const ItemSchema = new Schema({
         type: String,
         required: true,
     },
-    creator: {
+    owner: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
     },

@@ -1,15 +1,25 @@
-import {Router} from 'express';
-import mongoose from 'mongoose';
-
-const router = Router();
+"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const mongoose_1 = __importDefault(require("mongoose"));
+const router = (0, express_1.Router)();
 const jwt = require('jsonwebtoken');
-import User from '../models/User';
-import type { User as UserType } from '../models/User';
-import { authLimiter } from '../security';
+const User_1 = __importDefault(require("../models/User"));
 const bcrypt = require('bcryptjs');
 const Joi = require('joi');
 require('dotenv').config();
-
 // Validation schemas
 const registerSchema = Joi.object({
     username: Joi.string().alphanum().min(3).max(30).required(),
@@ -17,44 +27,36 @@ const registerSchema = Joi.object({
     email: Joi.string().email().required(),
     betaCode: Joi.string().required()
 });
-
 const loginSchema = Joi.object({
     username: Joi.string().required(),
     password: Joi.string().required()
 });
-
 // Validation middleware
-const validateRequest = (schema: any) => {
-    return (req: any, res: any, next: any) => {
+const validateRequest = (schema) => {
+    return (req, res, next) => {
         const { error } = schema.validate(req.body);
-
         if (error) {
             return res.status(400).json({
                 message: error.details[0].message,
                 error: true
             });
         }
-
         next();
     };
 };
-
-router.post('/register', authLimiter, validateRequest(registerSchema), async (req: any, res: any) => {
+router.post('/register', validateRequest(registerSchema), (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { username, password, email } = req.body;
-        const existingUser1 = await User.findOne({ email });
-        const existingUser2 = await User.findOne({ username });
+        const existingUser1 = yield User_1.default.findOne({ email });
+        const existingUser2 = yield User_1.default.findOne({ username });
         if (existingUser1 || existingUser2) {
-            return res.status(400).json({ message: 'Registration failed. Please try again.' });
+            return res.status(400).json({ message: 'Email or username already in use' });
         }
-
-        const salt = await bcrypt.genSalt(10);
-        const hashedPassword = await bcrypt.hash(password, salt);
-
+        const salt = yield bcrypt.genSalt(10);
+        const hashedPassword = yield bcrypt.hash(password, salt);
         // Generate a unique session ID for the new user
-        const sessionId = new mongoose.Types.ObjectId().toString();
-
-        const user = new User({
+        const sessionId = new mongoose_1.default.Types.ObjectId().toString();
+        const user = new User_1.default({
             username,
             password: hashedPassword,
             email,
@@ -62,146 +64,127 @@ router.post('/register', authLimiter, validateRequest(registerSchema), async (re
             lastLogin: new Date(),
             isBetaTester: true
         });
-
-        await user.save();
-
+        yield user.save();
         // Mark the beta code as used by this user
-
         const payload = {
             id: user._id,
             username: user.username,
             email: user.email,
             sessionId: sessionId
         };
-
         const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '48h' });
         res.status(200).json({ token, id: user._id });
-    } catch (error: any) {
-        res.status(500).json({error: error.message});
     }
-});
-
-router.post('/login', authLimiter, validateRequest(loginSchema), async (req: any, res: any) => {
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+}));
+router.post('/login', validateRequest(loginSchema), (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { username, password } = req.body;
-        const user: any = await User.findOne({ username });
+        const user = yield User_1.default.findOne({ username });
         if (!user) {
             return res.status(400).json({ message: 'Invalid username or password' });
         }
-
-        const isMatch = await bcrypt.compare(password, user.password);
+        const isMatch = yield bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(400).json({ message: 'Invalid username or password' });
         }
-
         // Generate a unique session ID
-        const sessionId = new mongoose.Types.ObjectId().toString();
-
+        const sessionId = new mongoose_1.default.Types.ObjectId().toString();
         const payload = {
             id: user._id,
             username: user.username,
             email: user.email,
             sessionId: sessionId
-        }
-
+        };
         const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '48h' });
-
         // Update user with new session ID (invalidates previous sessions)
-        await User.findByIdAndUpdate(user._id, {
+        yield User_1.default.findByIdAndUpdate(user._id, {
             activeSession: sessionId,
             lastLogin: new Date()
         });
-
         res.status(200).json({ token, id: user._id });
-    } catch (error: any) {
-        res.status(500).json({error: error.message});
     }
-});
-
-router.post('/logout', async (req: any, res: any) => {
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+}));
+router.post('/logout', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { token } = req.body;
         if (!token) {
             return res.status(400).json({ message: 'No token provided' });
         }
-
-        jwt.verify(token, process.env.JWT_SECRET, async (err: any, decoded: any) => {
+        jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => __awaiter(void 0, void 0, void 0, function* () {
             if (err) {
                 return res.status(401).json({ message: 'Invalid token' });
             }
-
             // Clear the active session for the user
-            await User.findByIdAndUpdate(decoded.id, {
+            yield User_1.default.findByIdAndUpdate(decoded.id, {
                 activeSession: null
             });
-
             res.status(200).json({ message: 'Logged out successfully' });
-        });
-    } catch (error: any) {
-        res.status(500).json({error: error.message});
+        }));
     }
-});
-
-router.delete('/delete-user', async (req: any, res: any) => {
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+}));
+router.delete('/delete-user', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { userId } = req.body;
-        const user = await User.findById(userId);
+        const user = yield User_1.default.findById(userId);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
         // Option 1: Use Mongoose's built-in methods directly
-        await User.findByIdAndDelete(userId);
-
+        yield User_1.default.findByIdAndDelete(userId);
         // Option 2: If you still want to use your static method but with error handling
         try {
-          await (User as any).deleteUser(userId);
-        } catch (error) {
-          console.error('Error deleting user:', error);
-          throw error; // Re-throw or handle as needed
+            yield User_1.default.deleteUser(userId);
+        }
+        catch (error) {
+            console.error('Error deleting user:', error);
+            throw error; // Re-throw or handle as needed
         }
         res.status(200).json({ message: 'User successfully deleted' });
-    } catch (error: any) {
-        res.status(500).json({error: error.message});
     }
-})
-
-router.get('/is-logged-in', async (req: any, res: any) => {
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+}));
+router.get('/is-logged-in', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         // Check for token in various places (header, query params, or body)
         const authHeader = req.headers['authorization'];
         const tokenFromHeader = authHeader ? authHeader.split(' ')[1] : null;
         const tokenFromQuery = req.query.token;
         const tokenFromBody = req.body.token;
-        
         // Use the first available token
         const token = tokenFromHeader || tokenFromQuery || tokenFromBody;
-        
         if (!token) {
-            return res.status(401).json({ 
-                isLoggedIn: false, 
-                message: 'No authentication token provided' 
+            return res.status(401).json({
+                isLoggedIn: false,
+                message: 'No authentication token provided'
             });
         }
-        
         // Verify the token
-        jwt.verify(token, process.env.JWT_SECRET, async (err: any, decoded: any) => {
+        jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => __awaiter(void 0, void 0, void 0, function* () {
             if (err) {
-                return res.status(401).json({ 
-                    isLoggedIn: false, 
-                    message: 'Invalid or expired token' 
+                return res.status(401).json({
+                    isLoggedIn: false,
+                    message: 'Invalid or expired token'
                 });
             }
-            
             // Check if the session is still active
-            const user = await User.findById(decoded.id);
-
+            const user = yield User_1.default.findById(decoded.id);
             if (!user) {
                 return res.status(404).json({
                     isLoggedIn: false,
                     message: 'User not found'
                 });
             }
-
             // If the token's session ID doesn't match the active session
             if (user.activeSession !== decoded.sessionId) {
                 return res.status(401).json({
@@ -209,7 +192,6 @@ router.get('/is-logged-in', async (req: any, res: any) => {
                     message: 'Your session has expired because you logged in from another device'
                 });
             }
-
             // Token is valid and session is active
             return res.status(200).json({
                 isLoggedIn: true,
@@ -219,13 +201,13 @@ router.get('/is-logged-in', async (req: any, res: any) => {
                     email: decoded.email
                 }
             });
-        });
-    } catch (error: any) {
+        }));
+    }
+    catch (error) {
         return res.status(500).json({
             isLoggedIn: false,
             error: error.message
         });
     }
-})
-
+}));
 module.exports = router;

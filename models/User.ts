@@ -1,7 +1,20 @@
-import mongoose from 'mongoose';
+import mongoose, { Document, Model, Schema } from 'mongoose';
 const bcrypt = require('bcryptjs');
 
-const userSchema = new mongoose.Schema({
+export interface User extends mongoose.Document {
+    id?: string; // Optional for compatibility with Express.Request.user
+    username: string;
+    password: string;
+    email: string;
+    createdAt: Date;
+    activeSession: string | null;
+    lastLogin: Date | null;
+    characters: mongoose.Types.ObjectId[];
+    campaigns: mongoose.Types.ObjectId[];
+}
+
+
+const userSchema = new Schema<User>({
     username: {
         type: String,
         required: true,
@@ -27,14 +40,6 @@ const userSchema = new mongoose.Schema({
         type: Date,
         default: null
     },
-    isBetaTester: {
-        type: Boolean,
-        default: false
-    },
-    betaCodeUsed: {
-        type: String,
-        default: null
-    },
     characters: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Character',
@@ -45,7 +50,7 @@ const userSchema = new mongoose.Schema({
     }]
 });
 
-userSchema.statics.updateUsername = async function(userId: any, newUsername: any) {
+userSchema.statics.updateUsername = async function(userId: string, newUsername: string) {
     const user = await this.findById(userId);
     if (!user) {
         throw new Error('User not found');
@@ -54,7 +59,7 @@ userSchema.statics.updateUsername = async function(userId: any, newUsername: any
     await user.save();
 }
 
-userSchema.statics.updatePassword = async function(userId: any, newPassword: any) {
+userSchema.statics.updatePassword = async function(userId: string, newPassword: string) {
     const user = await this.findById(userId);
     if (!user) {
         throw new Error('User not found');
@@ -64,7 +69,7 @@ userSchema.statics.updatePassword = async function(userId: any, newPassword: any
     await user.save();
 }
 
-userSchema.statics.updateEmail = async function(userId: any, newEmail: any) {
+userSchema.statics.updateEmail = async function(userId: string, newEmail: string) {
     const user = await this.findById(userId);
     if (!user) {
         throw new Error('User not found');
@@ -73,7 +78,7 @@ userSchema.statics.updateEmail = async function(userId: any, newEmail: any) {
     await user.save();
 }
 
-userSchema.statics.resetPassword = async function(userId: any) {
+userSchema.statics.resetPassword = async function(userId: string) {
     const user = await this.findById(userId);
     if (!user) {
         throw new Error('User not found');
@@ -82,7 +87,7 @@ userSchema.statics.resetPassword = async function(userId: any) {
     // TODO: send email with reset link
 }
 
-userSchema.statics.deleteUser = async function(userId: any) {
+userSchema.statics.deleteUser = async function(userId: string) {
     const user = await this.findById(userId);
     if (!user) {
         throw new Error('User not found');
@@ -90,7 +95,6 @@ userSchema.statics.deleteUser = async function(userId: any) {
     await user.deleteOne();
 }
 
-const UserModel = mongoose.model('User', userSchema);
+const User = mongoose.model<User>('User', userSchema);
 
-// Export for both CommonJS and ES modules
-export default UserModel;
+export default User;

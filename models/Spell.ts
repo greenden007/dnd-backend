@@ -43,7 +43,7 @@ const SpellSchema = new mongoose.Schema({
         type: String,
         default: 'none', // Save as regex and parse on the frontend "1d8+2". For cantrip scaling, do on frontend.
     },
-    creator: {
+    owner: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
     }

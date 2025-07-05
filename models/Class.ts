@@ -40,7 +40,7 @@ const ClassSchema = new mongoose.Schema({
             required: true,
         }
     },
-    creator: {
+    owner: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
     }
