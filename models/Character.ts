@@ -1,5 +1,5 @@
-const Schema = require('mongoose').Schema;
-require('models/utilities')
+import mongoose, { Schema } from 'mongoose';
+import * as utils from './utilities';
 
 const CharacterSchema = new mongoose.Schema({
     owner: {
@@ -14,6 +14,10 @@ const CharacterSchema = new mongoose.Schema({
     classes: {
         type: [Schema.Types.ObjectId],
         ref: 'Class',
+    },
+    subclasses: {
+        type: [Schema.Types.ObjectId],
+        ref: 'SubClass',
     },
     levels: {
         type: [Number]
@@ -35,8 +39,8 @@ const CharacterSchema = new mongoose.Schema({
         type: [String]
     },
     baseStats: { // Base stats are the raw stats before any modifiers
-        type: statBlock,
-        default: statBlock,
+        type: utils.statBlock,
+        default: utils.statBlock,
     },
     skillProficiencies: {
         type: [String]
@@ -55,9 +59,13 @@ const CharacterSchema = new mongoose.Schema({
         type: [Schema.Types.ObjectId],
         ref: 'Weapon',
     },
+    initiative: {
+        type: Number,
+        default: 0,
+    },
     toolsProficiencies: {
         type: [Schema.Types.ObjectId],
-        ref: 'Item',
+        ref: 'Tool',
     },
     maxHitPoints: {
         type: Number,
@@ -77,15 +85,15 @@ const CharacterSchema = new mongoose.Schema({
     },
     activeShield: {
         type: Schema.Types.ObjectId,
-        ref: 'Shield',
+        ref: 'Armor',
     },
     equipment: {
         type: [Schema.Types.ObjectId],
-        ref: 'Item',
+        ref: 'Tool',
     },
     currency: {
-        type: currency,
-        default: currency,
+        type: utils.currency,
+        default: utils.currency,
     },
     features: {
         type: [Schema.Types.ObjectId],
@@ -103,14 +111,20 @@ const CharacterSchema = new mongoose.Schema({
         type: [Number],
         default: [0, 0, 0, 0, 0, 0, 0, 0, 0],
     },
-    characterAppearance: {
+    bio: {
         type: String,
         default: '',
         maxLength: 511,
     }
 })
 
-const updateCharacter = async (characterId: any, newCharacter: any) => {
+CharacterSchema.statics.create = async function(characterData: any) {
+    const character = new this(characterData);
+    await character.save();
+    return character;
+}
+
+CharacterSchema.statics.updateCharacter = async function(characterId: any, newCharacter: any) {
     const character = await this.findById(characterId);
     if (!character) {
         throw new Error('Character not found');
@@ -121,16 +135,18 @@ const updateCharacter = async (characterId: any, newCharacter: any) => {
         }
     }
     await character.save();
+    return character;
 }
 
-const deleteCharacter = async (characterId: any) => {
+CharacterSchema.statics.deleteCharacter = async function(characterId: any) {
     const character = await this.findById(characterId);
     if (!character) {
         throw new Error('Character not found');
     }
 
-    await character.remove();
+    await character.deleteOne();
+    return { message: 'Character successfully deleted' };
 }
 
-const Character = mongoose.model('Character', CharacterSchema);
-module.exports = Character;
+const CharacterModel = mongoose.model('Character', CharacterSchema);
+export default CharacterModel;

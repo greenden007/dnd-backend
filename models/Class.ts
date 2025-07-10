@@ -1,4 +1,6 @@
-const ClassSchema = mongoose.Schema({
+import mongoose, { Schema } from 'mongoose';
+
+const ClassSchema = new mongoose.Schema({
     lvlUnlocks: {
         type: Map,
         of: {
@@ -11,7 +13,7 @@ const ClassSchema = mongoose.Schema({
         required: true,
     },
     armorProficiencies: {
-        type: [Schema.Types.ObjectId],
+        type: [mongoose.Schema.Types.ObjectId],
         ref: 'Armor',
     },
     weaponProficiencies: {
@@ -31,19 +33,36 @@ const ClassSchema = mongoose.Schema({
     baseEquipment: {
         type: [[mongoose.Schema.Types.ObjectId]],
         ref: 'Item',
+    },
+    multiclassing: {
+        statRequirements: {
+            type: [[String]], // [["str", "dex"]] for either or, ["str", "dex", "con"] for each >= 13
+            required: true,
+        }
+    },
+    owner: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
     }
 });
+
+ClassSchema.statics.create = async function(campaignData: any) {
+    const classObj = new this(campaignData);
+    await classObj.save();
+    return classObj;
+}
 
 ClassSchema.statics.addLevelUnlock = async function (classId: any, level: number, featureId: any) {
     const classObj = await this.findById(classId);
     if (!classObj) {
         throw new Error('Class not found');
     }
-    if (!classObj.lvlUnlocks.has(level)) {
-        classObj.lvlUnlocks.set(level, []);
+    if (!classObj.lvlUnlocks.has(level.toString())) {
+        classObj.lvlUnlocks.set(level.toString(), []);
     }
-    classObj.lvlUnlocks.get(level).push(featureId);
+    classObj.lvlUnlocks.get(level.toString()).push(featureId);
     await classObj.save();
+    return classObj;
 }
 
 ClassSchema.statics.removeLevelUnlock = async function (classId: any, level: number, featureId: any) {
@@ -51,9 +70,13 @@ ClassSchema.statics.removeLevelUnlock = async function (classId: any, level: num
     if (!classObj) {
         throw new Error('Class not found');
     }
-    if (classObj.lvlUnlocks.has(level)) {
-        classObj.lvlUnlocks.set(level, classObj.lvlUnlocks.get(level).filter((id: any) => id.toString() !== featureId.toString()));
+    if (classObj.lvlUnlocks.has(level.toString())) {
+        classObj.lvlUnlocks.set(
+            level.toString(),
+            classObj.lvlUnlocks.get(level.toString()).filter((id: any) => id.toString() !== featureId.toString())
+        );
         await classObj.save();
+        return classObj;
     } else {
         throw new Error('Level unlock not found');
     }
@@ -66,6 +89,7 @@ ClassSchema.statics.updateHitDie = async function (classId: any, newHitDie: numb
     }
     classObj.hitDie = newHitDie;
     await classObj.save();
+    return classObj;
 }
 
 ClassSchema.statics.updateArmorProficiencies = async function (classId: any, newArmorProficiencies: any) {
@@ -127,8 +151,21 @@ ClassSchema.statics.deleteClass = async function (classId: any) {
     if (!classObj) {
         throw new Error('Class not found');
     }
-    await classObj.remove();
+    await classObj.deleteOne();
 }
 
-const Class = mongoose.model('Class', ClassSchema);
-module.exports = Class;
+ClassSchema.statics.updateClass = async function (classId: any, newClass: any) {
+    const classObj = await this.findById(classId);
+    if (!classObj) {
+        throw new Error('Class not found');
+    }
+    for (const key in newClass) {
+        if (key !== '_id' && key !== '__v') {
+            classObj[key] = newClass[key];
+        }
+    }
+    await classObj.save();
+}
+
+const ClassModel = mongoose.model('Class', ClassSchema);
+export default ClassModel;
