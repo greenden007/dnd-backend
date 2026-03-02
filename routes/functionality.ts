@@ -20,7 +20,7 @@ const objectIdPattern = /^[0-9a-fA-F]{24}$/;
 
 // Helper function to validate MongoDB ObjectId
 function isValidObjectId(id: string): boolean {
-  return objectIdPattern.test(id);
+    return objectIdPattern.test(id);
 }
 /**
  * Middleware to check if the user is the creator/owner of a resource
@@ -30,35 +30,35 @@ function isValidObjectId(id: string): boolean {
  * @param creatorField The field name that stores the creator/owner ID (default: 'creator')
  */
 function checkOwnership(modelName: string, paramName: string, source: 'query' | 'body' | 'params' = 'params', creatorField: string = 'creator') {
-  return catchAsync(async (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user) {
-      return res.status(401).json({ message: 'Authentication error: User not found' });
-    }
-    let id;
-    if (source === 'params') {
-      id = req.params[paramName];
-    } else if (source === 'query') {
-      id = req.query[paramName];
-    } else {
-      id = req.body[paramName];
-    }
-    const Model = getModelByName(modelName);
-    
-    const resource = await Model.findById(id);
-    if (!resource) {
-      return res.status(404).json({ message: `${modelName} not found` });
-    }
-    
-    // Check if the user is the creator/owner of the resource
-    if (resource[creatorField] && resource[creatorField].toString() !== req.user!.id) {
-      return res.status(403).json({ 
-        message: `Forbidden: Only the ${creatorField === 'owner' ? 'owner' : 'creator'} can perform this action` 
-      });
-    }
-    
-    (req as any).resource = resource;
-    next();
-  });
+    return catchAsync(async (req: Request, res: Response, next: NextFunction) => {
+        if (!req.user) {
+            return res.status(401).json({ message: 'Authentication error: User not found' });
+        }
+        let id;
+        if (source === 'params') {
+            id = req.params[paramName];
+        } else if (source === 'query') {
+            id = req.query[paramName];
+        } else {
+            id = req.body[paramName];
+        }
+        const Model = getModelByName(modelName);
+
+        const resource = await Model.findById(id);
+        if (!resource) {
+            return res.status(404).json({ message: `${modelName} not found` });
+        }
+
+        // Check if the user is the creator/owner of the resource
+        if (resource[creatorField] && resource[creatorField].toString() !== req.user!.id) {
+            return res.status(403).json({
+                message: `Forbidden: Only the ${creatorField === 'owner' ? 'owner' : 'creator'} can perform this action`
+            });
+        }
+
+        (req as any).resource = resource;
+        next();
+    });
 }
 
 /**
@@ -66,17 +66,17 @@ function checkOwnership(modelName: string, paramName: string, source: 'query' | 
  * @param modelName The name of the model
  */
 function getModelByName(modelName: string): any {
-  const models: {[key: string]: any} = {
-    'Character': Character,
-    'Campaign': Campaign,
-    'Class': Class,
-    'Feature': Feature,
-    'Item': Item,
-    'Race': Race,
-    'Spell': Spell,
-    'Subclass': Subclass
-  };
-  return models[modelName];
+    const models: { [key: string]: any } = {
+        'Character': Character,
+        'Campaign': Campaign,
+        'Class': Class,
+        'Feature': Feature,
+        'Item': Item,
+        'Race': Race,
+        'Spell': Spell,
+        'Subclass': Subclass
+    };
+    return models[modelName];
 }
 
 // CREATE a new character
@@ -403,10 +403,10 @@ router.delete('/race/:id', catchAsync(auth), validateObjectId('id', 'params'), c
 }));
 
 // ADD a character to a campaign
-router.post('/campaign/:id/characters', catchAsync(auth), 
-    validateObjectId('id', 'params'), 
-    validateObjectId('characterId', 'body'), 
-    checkOwnership('Campaign', 'id'), 
+router.post('/campaign/:id/characters', catchAsync(auth),
+    validateObjectId('id', 'params'),
+    validateObjectId('characterId', 'body'),
+    checkOwnership('Campaign', 'id'),
     catchAsync(async (req: Request, res: Response) => {
         const { id: campaignId } = req.params;
         const { characterId } = req.body;
@@ -418,7 +418,7 @@ router.post('/campaign/:id/characters', catchAsync(auth),
         }
 
         // Use $addToSet to avoid duplicates
-        await Campaign.findByIdAndUpdate(campaignId, { 
+        await Campaign.findByIdAndUpdate(campaignId, {
             $addToSet: { characters: characterId, players: character.owner }
         });
         await Character.findByIdAndUpdate(characterId, { campaign: campaignId });
@@ -429,10 +429,10 @@ router.post('/campaign/:id/characters', catchAsync(auth),
 );
 
 // REMOVE a character from a campaign
-router.delete('/campaign/:id/characters/:characterId', catchAsync(auth), 
-    validateObjectId('id', 'params'), 
-    validateObjectId('characterId', 'params'), 
-    checkOwnership('Campaign', 'id'), 
+router.delete('/campaign/:id/characters/:characterId', catchAsync(auth),
+    validateObjectId('id', 'params'),
+    validateObjectId('characterId', 'params'),
+    checkOwnership('Campaign', 'id'),
     catchAsync(async (req: Request, res: Response) => {
         const { id: campaignId, characterId } = req.params;
 

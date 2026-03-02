@@ -21,9 +21,19 @@ mongoose.connect(process.env.MONGODB_URI)
         process.exit(1); // Exit with failure on connection error
     });
 
-// Import routes with proper path resolution
-app.use('/api/auth', require(path.join(__dirname, '../routes/auth')));
-app.use('/api/func', require(path.join(__dirname, '../routes/functionality')));
+// Import routes
+import authRoutes from '../routes/auth';
+import functionalityRoutes from '../routes/functionality';
+import passwordResetRoutes from '../routes/passwordReset';
+import { specs, swaggerUi } from './swagger';
+
+// Use routes
+app.use('/api/auth', authRoutes);
+app.use('/api/func', functionalityRoutes);
+app.use('/api/password-reset', passwordResetRoutes);
+
+// Swagger API documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 
 // Health check endpoint
 app.get('/health', (req: any, res: any) => {

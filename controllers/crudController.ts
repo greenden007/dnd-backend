@@ -87,7 +87,7 @@ export class CrudController<D extends Document = Document, M extends Model<D> = 
     let queryStr = JSON.stringify(queryObj);
     queryStr = queryStr.replace(/\b(gte|gt|lte|lt)\b/g, match => `$${match}`);
 
-    let query = this.model.find(JSON.parse(queryStr));
+    let query: any = this.model.find(JSON.parse(queryStr));
 
     // 3) Sorting
     if (req.query.sort) {
@@ -287,7 +287,7 @@ export class CrudController<D extends Document = Document, M extends Model<D> = 
       throw new AppError(`${this.resourceName} not found`, 404);
     }
 
-    if (this.options.ownerField && item[this.options.ownerField].toString() !== req.user.id) {
+    if (this.options.ownerField && (item as any)[this.options.ownerField].toString() !== req.user.id) {
       throw new AppError('Not authorized to access this resource', 403);
     }
 

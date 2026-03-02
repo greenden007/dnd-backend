@@ -1,17 +1,13 @@
-import { Types } from 'mongoose';
+import { Request } from 'express';
+import { User } from '../models/User';
 
 declare global {
   namespace Express {
-    interface User {
-      id: Types.ObjectId;
-      email: string;
-      username: string;
-      // Add other user properties as needed
-    }
-
     interface Request {
       user?: User;
-      resource?: any; // For resources loaded by middleware
+      resource?: any;
     }
   }
 }
+
+export {};

@@ -1,14 +1,15 @@
-import {Router} from 'express';
+import { Router } from 'express';
 import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import Joi from 'joi';
+import dotenv from 'dotenv';
+import User, { User as UserType } from '../models/User';
+import { authLimiter } from '../security';
+
+dotenv.config();
 
 const router = Router();
-const jwt = require('jsonwebtoken');
-import User from '../models/User';
-import type { User as UserType } from '../models/User';
-import { authLimiter } from '../security';
-const bcrypt = require('bcryptjs');
-const Joi = require('joi');
-require('dotenv').config();
 
 // Validation schemas
 const registerSchema = Joi.object({
@@ -74,10 +75,15 @@ router.post('/register', authLimiter, validateRequest(registerSchema), async (re
             sessionId: sessionId
         };
 
-        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '48h' });
+        if (!process.env.JWT_SECRET) {
+            throw new Error('JWT_SECRET is not defined');
+        }
+        const jwtSecret = process.env.JWT_SECRET;
+
+        const token = jwt.sign(payload, jwtSecret, { expiresIn: '48h' });
         res.status(200).json({ token, id: user._id });
     } catch (error: any) {
-        res.status(500).json({error: error.message});
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -104,7 +110,12 @@ router.post('/login', authLimiter, validateRequest(loginSchema), async (req: any
             sessionId: sessionId
         }
 
-        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '48h' });
+        if (!process.env.JWT_SECRET) {
+            throw new Error('JWT_SECRET is not defined');
+        }
+        const jwtSecret = process.env.JWT_SECRET;
+
+        const token = jwt.sign(payload, jwtSecret, { expiresIn: '48h' });
 
         // Update user with new session ID (invalidates previous sessions)
         await User.findByIdAndUpdate(user._id, {
@@ -114,7 +125,7 @@ router.post('/login', authLimiter, validateRequest(loginSchema), async (req: any
 
         res.status(200).json({ token, id: user._id });
     } catch (error: any) {
-        res.status(500).json({error: error.message});
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -125,7 +136,12 @@ router.post('/logout', async (req: any, res: any) => {
             return res.status(400).json({ message: 'No token provided' });
         }
 
-        jwt.verify(token, process.env.JWT_SECRET, async (err: any, decoded: any) => {
+        if (!process.env.JWT_SECRET) {
+            throw new Error('JWT_SECRET is not defined');
+        }
+        const jwtSecret = process.env.JWT_SECRET;
+
+        jwt.verify(token, jwtSecret, async (err: any, decoded: any) => {
             if (err) {
                 return res.status(401).json({ message: 'Invalid token' });
             }
@@ -138,7 +154,7 @@ router.post('/logout', async (req: any, res: any) => {
             res.status(200).json({ message: 'Logged out successfully' });
         });
     } catch (error: any) {
-        res.status(500).json({error: error.message});
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -154,14 +170,14 @@ router.delete('/delete-user', async (req: any, res: any) => {
 
         // Option 2: If you still want to use your static method but with error handling
         try {
-          await (User as any).deleteUser(userId);
+            await (User as any).deleteUser(userId);
         } catch (error) {
-          console.error('Error deleting user:', error);
-          throw error; // Re-throw or handle as needed
+            console.error('Error deleting user:', error);
+            throw error; // Re-throw or handle as needed
         }
         res.status(200).json({ message: 'User successfully deleted' });
     } catch (error: any) {
-        res.status(500).json({error: error.message});
+        res.status(500).json({ error: error.message });
     }
 })
 
@@ -172,54 +188,51 @@ router.get('/is-logged-in', async (req: any, res: any) => {
         const tokenFromHeader = authHeader ? authHeader.split(' ')[1] : null;
         const tokenFromQuery = req.query.token;
         const tokenFromBody = req.body.token;
-        
+
         // Use the first available token
         const token = tokenFromHeader || tokenFromQuery || tokenFromBody;
-        
+
         if (!token) {
-            return res.status(401).json({ 
-                isLoggedIn: false, 
-                message: 'No authentication token provided' 
+            return res.status(401).json({
+                isLoggedIn: false,
+                message: 'No authentication token provided'
             });
         }
-        
-        // Verify the token
-        jwt.verify(token, process.env.JWT_SECRET, async (err: any, decoded: any) => {
-            if (err) {
-                return res.status(401).json({ 
-                    isLoggedIn: false, 
-                    message: 'Invalid or expired token' 
-                });
+
+        try {
+            // Verify the token
+            if (!process.env.JWT_SECRET) {
+                throw new Error('JWT_SECRET is not defined');
             }
-            
+            const jwtSecret = process.env.JWT_SECRET;
+
+            // Verify the token
+            const decoded = jwt.verify(token, jwtSecret) as { id: string; sessionId: string };
+
             // Check if the session is still active
             const user = await User.findById(decoded.id);
-
-            if (!user) {
-                return res.status(404).json({
-                    isLoggedIn: false,
-                    message: 'User not found'
-                });
-            }
-
-            // If the token's session ID doesn't match the active session
-            if (user.activeSession !== decoded.sessionId) {
+            if (!user || user.activeSession !== decoded.sessionId) {
                 return res.status(401).json({
                     isLoggedIn: false,
-                    message: 'Your session has expired because you logged in from another device'
+                    message: 'Session expired. Please log in again.'
                 });
             }
 
-            // Token is valid and session is active
-            return res.status(200).json({
+            // Token and session are valid
+            res.status(200).json({
                 isLoggedIn: true,
                 user: {
-                    id: decoded.id,
-                    username: decoded.username,
-                    email: decoded.email
+                    id: user._id,
+                    username: user.username,
+                    email: user.email
                 }
             });
-        });
+        } catch (error) {
+            return res.status(401).json({
+                isLoggedIn: false,
+                message: 'Invalid or expired token'
+            });
+        }
     } catch (error: any) {
         return res.status(500).json({
             isLoggedIn: false,
@@ -228,4 +241,5 @@ router.get('/is-logged-in', async (req: any, res: any) => {
     }
 })
 
-module.exports = router;
+// Export the router as default
+export default router;
